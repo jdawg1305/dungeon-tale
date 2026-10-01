@@ -37,3 +37,20 @@ h2 { font-size: 1.8rem; }
 .setting input[type=range] { padding: 0; width: 45%; accent-color: var(--accent); }
 .setting input[type=checkbox] { width: 1.2rem; height: 1.2rem; accent-color: var(--accent); }
 .setting small { color: var(--muted); display: block; }
+/* Character creation: species cards with art */
+#screen > .wide { max-width: 66rem; }
+.filters label { display: flex; gap: .5rem; align-items: center; }
+.filters #q { flex: 1; min-width: 12rem; }
+.picker { display: grid; grid-template-columns: 1fr 19rem; gap: 1rem; align-items: start; }
+.grid.cards { grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); max-height: 58vh; gap: .6rem; }
+.card { display: flex; flex-direction: column; padding: 0; overflow: hidden; font-size: .9rem; }
+.card img { width: 100%; aspect-ratio: 381 / 344; object-fit: cover; object-position: right top; background: var(--bg); display: block; }
+.card span { padding: 0 .55rem; }
+.card .cname { font-size: 1.05rem; padding-top: .45rem; }
+.card .csrc { font-size: .7rem; color: var(--muted); }
+.card .cdesc { font-size: .8rem; color: var(--fg); padding-bottom: .55rem; margin-top: .25rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.detail { position: sticky; top: 0; }
+.detail img, .portrait { width: 100%; border-radius: 4px; display: block; }
+.detail h3 { font-family: "IM Fell English SC", Georgia, serif; font-weight: 400; color: var(--accent); font-size: 1.5rem; margin: .6rem 0 0; }
+.portrait { max-width: 20rem; margin: 0 auto 1rem; }
+@media (max-width: 760px) { .picker { grid-template-columns: 1fr; } .detail { position: static; } }

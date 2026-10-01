@@ -1,16 +1,4 @@
-// ---------- Species, grouped by source so the long list stays browsable ----------
-const SPECIES = {
-  "Player's Handbook": "Aasimar,Dragonborn,Dwarf,Elf,Gnome,Goliath,Halfling,Human,Orc,Tiefling",
-  "Monsters of the Multiverse": "Aarakocra,Air Genasi,Bugbear,Centaur,Changeling,Deep Gnome,Duergar,Earth Genasi,Eladrin,Fairy,Firbolg,Fire Genasi,Githyanki,Githzerai,Goblin,Harengon,Hobgoblin,Kenku,Kobold,Lizardfolk,Minotaur,Satyr,Sea Elf,Shadar-kai,Tabaxi,Tortle,Triton,Water Genasi,Yuan-ti",
-  "Ravenloft": "Dhampir,Hexblood,Lupin,Reborn",
-  "Lorwyn": "Boggart,Faerie,Flamekin,Kithkin,Lorwyn Changeling,Lorwyn-Shadowmoor Elf,Rimekin",
-  "Eberron": "Changeling,Kalashtar,Khoravar,Shifter,Warforged,Gargoyle,Gnoll,Harpy,Medusa,Worg,Dhakaani Ghaal'dar,Dhakaani Golin'dar,Dhakaani Guul'dar,Jhorgun'taal,Kalamer Landwalker,Ruinbound,Sahuagin",
-  "Planes & Space": "Astral Elf,Autognome,Giff,Hadozee,Plasmoid,Thri-kreen,Kender,Owlin,Leonin,Loxodon,Simic Hybrid,Vedalken,Verdan,Duskling",
-  "Legacy (2014)": "Half-Elf,Half-Orc,Feral Tiefling,Gith,Genasi,Yuan-ti Pureblood,Grung,Locathah",
-  "Northlands": "Alfar,Baugsmidr Dwarf,Bearfolk,Beastkin,Fjord Dwarf,Giantkin,Ice Elf,Trollkin,Werekin",
-  "Grim Hollow": "Accursed,Arisen,Disembodied,Downcast,Dreamer,Grudgel,Laneshi,Ogresh,Wechselkind,Wulven",
-  "Other Third-Party": "Cervan,Corvum,Gallus,Hedge,Jerbeen,Luma,Mapach,Raptor,Strig,Vulpin,Darakhul,Erina,Quickstep,Ratatosk,Ravenfolk,Satarre,Shade,Shadow Goblin,Umbral Human,Geppettin,Mandrake,Dara,Nakudama,Manikin,Scourgeborne,Floral Dragonborn,Hobbit,Etherean,Geleton",
-};
+// Species data (name, source, description, traits, art id) comes from species.js
 
 // ---------- Settings: defined as data so the menu builds itself ----------
 const DEFAULTS = {
@@ -94,41 +82,68 @@ function menu() {
 }
 
 // ---------- Character creation ----------
-function createCharacter() {
-  let cat = "All", query = "", pick = null;
-  screen(`<h2>Create your character</h2>
-    <label>Name <input id="name" maxlength="30" autocomplete="off"></label>
-    <div class="chips" id="cats"></div>
-    <input id="q" type="search" placeholder="Search species" style="width:100%">
-    <div class="grid" id="grid" style="margin-top:.8rem"></div>
-    <p class="box" id="sel">Choose a species.</p>
-    <div class="row"><button class="btn" id="ok" disabled>Begin adventure</button><button class="btn" id="back">Back</button></div>`);
+const artOf = (s) => `img/species/${s.id}.webp`;
 
-  const all = Object.entries(SPECIES).flatMap(([c, list]) => list.split(",").map((n) => ({ n, c })));
+function createCharacter() {
+  let src = "All", query = "", pick = null;
+  const sources = [...new Set(SPECIES.map((s) => s.source))];
+  screen(`<div class="wide"><h2>Create your character</h2>
+    <div class="row filters">
+      <label>Name <input id="name" maxlength="30" autocomplete="off"></label>
+      <label>Source <select id="src"><option value="All">All sources (${SPECIES.length})</option>${sources.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select></label>
+      <input id="q" type="search" placeholder="Search species or traits">
+    </div>
+    <div class="picker">
+      <div class="grid cards" id="grid"></div>
+      <aside class="box detail" id="sel"><p class="muted">Choose a species.</p></aside>
+    </div>
+    <div class="row"><button class="btn" id="ok" disabled>Begin adventure</button><button class="btn" id="back">Back</button></div></div>`);
+
   const ok = () => { $("#ok").disabled = !($("#name").value.trim() && pick); };
 
-  function draw() {
-    $("#cats").innerHTML = ["All", ...Object.keys(SPECIES)].map((c) => `<button class="btn ${c === cat ? "on" : ""}" data-c="${esc(c)}">${esc(c)}</button>`).join("");
-    const shown = all.filter((s) => (cat === "All" || s.c === cat) && s.n.toLowerCase().includes(query));
-    $("#grid").innerHTML = shown.map((s, i) => `<button class="btn ${pick && pick.n === s.n && pick.c === s.c ? "on" : ""}" data-i="${i}" title="${esc(s.c)}">${esc(s.n)}</button>`).join("") || '<p class="muted">No species match.</p>';
-    $("#cats").onclick = (e) => { if (e.target.dataset.c) { cat = e.target.dataset.c; draw(); } };
-    $("#grid").onclick = (e) => {
-      if (e.target.dataset.i === undefined) return;
-      pick = shown[+e.target.dataset.i];
-      $("#sel").textContent = `${pick.n} (${pick.c})`;
-      draw(); ok();
-    };
+  function showDetail() {
+    $("#sel").innerHTML = pick
+      ? `<img src="${artOf(pick)}" alt="${esc(pick.name)} artwork">
+         <h3>${esc(pick.name)}</h3><p class="muted">${esc(pick.source)}</p>
+         <p>${esc(pick.desc)}</p>
+         <p><strong>Traits:</strong> ${esc(pick.traits)}</p>`
+      : '<p class="muted">Choose a species.</p>';
   }
-  $("#q").oninput = (e) => { query = e.target.value.toLowerCase(); draw(); };
+
+  function draw() {
+    const q = query.trim().toLowerCase();
+    const shown = SPECIES.filter((s) => (src === "All" || s.source === src) &&
+      (!q || (s.name + " " + s.traits + " " + s.source).toLowerCase().includes(q)));
+    $("#grid").innerHTML = shown.map((s) => `<button class="btn card ${pick && pick.id === s.id ? "on" : ""}" data-id="${s.id}">
+        <img src="${artOf(s)}" alt="" loading="lazy">
+        <span class="cname">${esc(s.name)}</span>
+        <span class="csrc">${esc(s.source)}</span>
+        <span class="cdesc">${esc(s.desc)}</span></button>`).join("") || '<p class="muted">No species match.</p>';
+  }
+
+  // Selecting only toggles classes so the grid keeps its scroll position.
+  $("#grid").onclick = (e) => {
+    const card = e.target.closest("[data-id]"); if (!card) return;
+    pick = SPECIES.find((s) => s.id === card.dataset.id);
+    document.querySelectorAll("#grid .card").forEach((c) => c.classList.toggle("on", c === card));
+    showDetail(); ok();
+  };
+  $("#src").onchange = (e) => { src = e.target.value; draw(); };
+  $("#q").oninput = (e) => { query = e.target.value; draw(); };
   $("#name").oninput = ok;
   $("#back").onclick = menu;
-  $("#ok").onclick = () => { const save = { name: $("#name").value.trim(), species: pick.n, source: pick.c }; write("dt-save", save); startGame(save); };
+  $("#ok").onclick = () => {
+    const save = { name: $("#name").value.trim(), species: pick.name, source: pick.source, id: pick.id };
+    write("dt-save", save); startGame(save);
+  };
   draw();
 }
 
 // ---------- Placeholder game screen (plug your story engine in here) ----------
 function startGame(save) {
+  const art = save.id ? `<img class="portrait" src="img/species/${esc(save.id)}.webp" alt="${esc(save.species)} artwork">` : "";
   screen(`<h2>${esc(save.name)}</h2><p class="muted">${esc(save.species)} (${esc(save.source)})</p>
+    ${art}
     <p class="box" id="text" style="min-height:6rem"></p>
     <div class="row"><button class="btn" id="back">Save and return to menu</button></div>`);
   const full = `You, ${save.name} the ${save.species}, step into the torchlit dark. Your story begins here.`;
