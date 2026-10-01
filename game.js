@@ -320,6 +320,8 @@ function makeSave(name, species) {
     speciesId: species.id,
 
     scene: "intro",
+    adventureId: null,
+    flags: {},
   };
 }
 
@@ -386,6 +388,14 @@ function normalizeSave(save) {
         save.scene ||
         "intro"
       ),
+    adventureId:
+      typeof save.adventureId === "string"
+        ? save.adventureId
+        : null,
+    flags:
+      save.flags && typeof save.flags === "object"
+        ? save.flags
+        : {},
   };
 }
 
@@ -1137,229 +1147,200 @@ function createCharacter() {
 // GAME / STORY SCREEN
 // ============================================================
 
-function startGame(save) {
-  save =
-    normalizeSave(save);
+// ============================================================
+// ADVENTURE LIBRARY
+// ============================================================
 
+function getAdventureById(id) {
+  return (Array.isArray(ADVENTURES) ? ADVENTURES : [])
+    .find((adventure) => adventure.id === id);
+}
+
+function adventureLibrary(save) {
+  save = normalizeSave(save);
   if (!save) {
     menu();
     return;
   }
 
-  const species =
-    getSpeciesById(
-      save.speciesId
-    );
+  const adventures = Array.isArray(ADVENTURES) ? ADVENTURES : [];
+  const cards = adventures.map((adventure) => {
+    const image = adventure.cover
+      ? `<img class="adventure-cover" src="${esc(adventure.cover)}" alt="${esc(adventure.title)} cover art" onerror="this.hidden=true">`
+      : "";
+    return `
+      <article class="adventure-card">
+        ${image}
+        <div class="adventure-card-content">
+          <p class="eyebrow">${esc(adventure.genre || "Fantasy adventure")}</p>
+          <h3>${esc(adventure.title)}</h3>
+          <p>${esc(adventure.summary || "A new adventure awaits.")}</p>
+          <p class="muted adventure-meta">${esc(adventure.duration || "Interactive story")}</p>
+          <button class="btn adventure-start" type="button" data-adventure="${esc(adventure.id)}">
+            ${save.adventureId === adventure.id ? "Continue adventure" : "Choose adventure"}
+          </button>
+        </div>
+      </article>`;
+  }).join("");
 
-  if (!species) {
-    alert(
-      "The saved species could not be found."
-    );
+  screen(`
+    <div class="wide adventure-library">
+      <header class="library-header">
+        <div>
+          <p class="eyebrow">Your next chapter</p>
+          <h2>Choose an Adventure</h2>
+          <p class="muted">Playing as <strong>${esc(save.name)}</strong> · ${esc((getSpeciesById(save.speciesId) || {}).name || "Adventurer")}</p>
+        </div>
+      </header>
+      <section class="adventure-grid" aria-label="Available adventures">
+        ${cards || '<p class="muted">No adventures have been added yet. Add an adventure to adventures.js.</p>'}
+      </section>
+      <div class="row library-actions">
+        <button class="btn" id="library-character" type="button">Create another character</button>
+        <button class="btn" id="library-menu" type="button">Main menu</button>
+      </div>
+    </div>
+  `);
 
+  document.querySelectorAll("[data-adventure]").forEach((button) => {
+    button.onclick = () => {
+      const adventure = getAdventureById(button.dataset.adventure);
+      if (!adventure) return;
+      const isContinuing = save.adventureId === adventure.id &&
+        adventure.scenes && adventure.scenes[save.scene];
+      save.adventureId = adventure.id;
+      if (!isContinuing) save.scene = adventure.startScene;
+      save.flags = save.flags || {};
+      write(SAVE_KEY, save);
+      startGame(save);
+    };
+  });
+
+  $("#library-character").onclick = createCharacter;
+  $("#library-menu").onclick = menu;
+}
+
+// ============================================================
+// ADVENTURE / STORY SCREEN
+// ============================================================
+
+function startGame(save) {
+  save = normalizeSave(save);
+  if (!save) {
     menu();
     return;
   }
 
-  /*
-    Clean up any previous game listeners.
-  */
+  const species = getSpeciesById(save.speciesId);
+  if (!species) {
+    alert("The saved species could not be found.");
+    menu();
+    return;
+  }
+
+  // Characters without an adventure are sent to the library first.
+  if (!save.adventureId) {
+    adventureLibrary(save);
+    return;
+  }
+
+  const adventure = getAdventureById(save.adventureId);
+  if (!adventure) {
+    save.adventureId = null;
+    save.scene = "intro";
+    write(SAVE_KEY, save);
+    adventureLibrary(save);
+    return;
+  }
 
   cleanupGameListeners();
+  save.flags = save.flags || {};
+  if (!adventure.scenes[save.scene]) save.scene = adventure.startScene;
+  write(SAVE_KEY, save);
 
-  const art =
-    species.id
-      ? `
-        <img
-          class="portrait"
-          src="img/species/${esc(species.id)}.webp"
-          alt="${esc(species.name)} artwork"
-        >
-      `
-      : "";
+  const scene = adventure.scenes[save.scene];
+  const portrait = species.id
+    ? `<img class="portrait" src="${esc(artOf(species))}" alt="${esc(species.name)} artwork" onerror="this.hidden=true">`
+    : "";
+  const sceneImage = scene.image
+    ? `<figure class="scene-figure"><img class="scene-image" src="${esc(scene.image)}" alt="${esc(scene.imageAlt || scene.title)}" onerror="this.hidden=true">${scene.imageCaption ? `<figcaption>${esc(scene.imageCaption)}</figcaption>` : ""}</figure>`
+    : "";
+  const paragraphs = (scene.text || []).map((paragraph) => `<p>${esc(paragraph)}</p>`).join("");
+  const stats = scene.encounter
+    ? `<aside class="encounter-panel"><h3>${esc(scene.encounter.name || "Encounter")}</h3><dl>${Object.entries(scene.encounter.stats || {}).map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>${scene.encounter.notes ? `<p class="muted">${esc(scene.encounter.notes)}</p>` : ""}</aside>`
+    : "";
 
   screen(`
-    <div class="wide game-screen">
-
-      <header>
-        <h2>
-          ${esc(save.name)}
-        </h2>
-
-        <p class="muted">
-          ${esc(species.name)}
-          (${esc(species.source)})
-        </p>
+    <div class="wide game-screen adventure-play-screen">
+      <header class="story-header">
+        <div>
+          <p class="eyebrow">${esc(adventure.title)}</p>
+          <h2>${esc(scene.title || "Your Adventure")}</h2>
+          <p class="muted">${esc(save.name)} · ${esc(species.name)}${scene.chapter ? ` · ${esc(scene.chapter)}` : ""}</p>
+        </div>
+        ${portrait}
       </header>
-
-      ${art}
-
-      <div
-        class="box story-box"
-        id="text"
-      ></div>
-
-      <div class="row">
-
-        <button
-          class="btn"
-          id="back"
-        >
-          Save and return to menu
-        </button>
-
+      ${sceneImage}
+      <article class="box story-box adventure-story" id="text">${paragraphs}</article>
+      ${stats}
+      <section class="story-choices" aria-label="Story choices">
+        ${(scene.choices || []).map((choice, index) => `<button class="btn choice-btn" type="button" data-choice="${index}">${esc(choice.label)}</button>`).join("")}
+      </section>
+      <div class="row story-actions">
+        <button class="btn" id="story-library" type="button">Adventure library</button>
+        <button class="btn" id="story-menu" type="button">Save and main menu</button>
       </div>
-
     </div>
   `);
 
-  const output =
-    $("#text");
-
-  const backButton =
-    $("#back");
-
-  const fullText =
-    `You, ${save.name} the ${species.name}, ` +
-    `step into the torchlit dark. ` +
-    `Your story begins here.`;
-
-  let index = 0;
-
-  let timer = null;
-
-  let finished = false;
-
-  // ----------------------------------------------------------
-  // Finish text immediately
-  // ----------------------------------------------------------
-
-  function finishText() {
-    if (finished) {
-      return;
-    }
-
-    finished = true;
-
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-
-    index =
-      fullText.length;
-
-    output.textContent =
-      fullText;
-  }
-
-  // ----------------------------------------------------------
-  // Advance key
-  // ----------------------------------------------------------
-
-  function onKey(event) {
-    if (
-      event.code ===
-      settings.advanceKey
-    ) {
-      finishText();
-    }
-  }
-
-  document.addEventListener(
-    "keydown",
-    onKey
-  );
-
-  activeGameKeyHandler =
-    onKey;
-
-  // ----------------------------------------------------------
-  // Clicking the story text skips it
-  // ----------------------------------------------------------
-
-  output.onclick =
-    finishText;
-
-  // ----------------------------------------------------------
-  // Display text
-  // ----------------------------------------------------------
-
-  if (
-    settings.textSpeed >= 100
-  ) {
-    finishText();
-  } else {
-
-    const speed =
-      Math.max(
-        1,
-        Number(settings.textSpeed) || 40
-      );
-
-    const interval =
-      1000 / speed;
-
-    timer =
-      setInterval(
-        () => {
-
-          index++;
-
-          output.textContent =
-            fullText.slice(
-              0,
-              index
-            );
-
-          if (
-            index >=
-            fullText.length
-          ) {
-            clearInterval(
-              timer
-            );
-
-            timer = null;
-
-            finished = true;
-          }
-
-        },
-        interval
-      );
-
-    activeGameTimer =
-      timer;
-  }
-
-  // ----------------------------------------------------------
-  // Back to menu
-  // ----------------------------------------------------------
-
-  backButton.onclick =
-    () => {
-
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
+  document.querySelectorAll("[data-choice]").forEach((button) => {
+    button.onclick = () => {
+      const choice = (scene.choices || [])[Number(button.dataset.choice)];
+      if (!choice) return;
+      if (choice.setFlag) save.flags[choice.setFlag] = true;
+      if (choice.target === "__LIBRARY__") {
+        save.scene = scene.id;
+        write(SAVE_KEY, save);
+        adventureLibrary(save);
+        return;
       }
-
-      /*
-        Save the current scene.
-      */
-
-      save.scene =
-        "intro";
-
-      write(
-        SAVE_KEY,
-        save
-      );
-
-      cleanupGameListeners();
-
-      menu();
+      if (choice.target === "__END__") {
+        renderAdventureEnding(save, adventure, choice.endingText || "This adventure has ended.");
+        return;
+      }
+      if (!adventure.scenes[choice.target]) {
+        alert(`The scene "${choice.target}" is missing from adventures.js.`);
+        return;
+      }
+      save.scene = choice.target;
+      write(SAVE_KEY, save);
+      startGame(save);
     };
+  });
+
+  $("#story-library").onclick = () => adventureLibrary(save);
+  $("#story-menu").onclick = () => {
+    write(SAVE_KEY, save);
+    cleanupGameListeners();
+    menu();
+  };
+}
+
+function renderAdventureEnding(save, adventure, endingText) {
+  cleanupGameListeners();
+  screen(`
+    <div class="menu-screen adventure-ending">
+      <p class="eyebrow">${esc(adventure.title)}</p>
+      <h2>Adventure Complete</h2>
+      <p>${esc(endingText)}</p>
+      <div class="row">
+        <button class="btn" id="ending-library" type="button">Adventure library</button>
+        <button class="btn" id="ending-menu" type="button">Main menu</button>
+      </div>
+    </div>
+  `);
+  $("#ending-library").onclick = () => adventureLibrary(save);
+  $("#ending-menu").onclick = menu;
 }
 
 // ============================================================
