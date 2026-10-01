@@ -1,0 +1,1 @@
+Optional artwork for the Skyhorn adventure. Add your authorized local images here using the filenames referenced in adventures.js (cover.jpg, harbor.jpg, storm-at-sea.jpg, lighthouse.jpg, flooded-caves.jpg, ritual-chamber.jpg). Missing images are hidden automatically.
